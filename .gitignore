@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+*.log
+CLAUDE_CODE_PLAN.md
+TECHNICAL_SPEC.md
