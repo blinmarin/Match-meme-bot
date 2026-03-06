@@ -19,8 +19,16 @@ export const config = {
     maxTokens: 10,
     temperature: 0.3,
   },
+  hf: {
+    apiToken: required('HF_API_TOKEN'),
+    model: 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+    apiUrl: 'https://api-inference.huggingface.co/pipeline/feature-extraction',
+  },
   imgflip: {
     apiUrl: 'https://api.imgflip.com/get_memes',
+  },
+  search: {
+    topN: 5,
   },
   maxMessageLength: 1000,
 };

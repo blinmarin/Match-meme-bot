@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "tsx src/index.ts",
-    "dev": "tsx --watch src/index.ts"
+    "dev": "tsx --watch src/index.ts",
+    "fetch-memes": "tsx scripts/fetch-memes.ts"
   },
   "license": "MIT",
   "dependencies": {
