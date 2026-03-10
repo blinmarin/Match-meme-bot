@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "dev": "tsx --watch src/index.ts",
     "fetch-memes": "tsx scripts/fetch-memes.ts",
-    "enrich": "tsx scripts/enrich-memes.ts"
+    "enrich": "tsx scripts/enrich-memes.ts",
+    "embed": "tsx scripts/generate-embeddings.ts"
   },
   "license": "MIT",
   "dependencies": {

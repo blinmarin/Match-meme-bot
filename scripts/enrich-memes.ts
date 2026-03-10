@@ -1,8 +1,10 @@
 import "dotenv/config";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { dirname } from "path";
 import OpenAI from "openai";
 
 const INPUT_PATH = "data/memes.json";
+const OUTPUT_PATH = "data/memes-indexed.json";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const DELAY_MS = 2000; // Пауза между запросами (30 req/min у Groq)
 const SAVE_EVERY = 10; // Сохранять прогресс каждые N мемов
@@ -16,28 +18,48 @@ Format: "{meme_name} — description"
 
 Write nothing else. Only one line.`;
 
-interface Meme {
+interface RawMeme {
   id: string;
   name: string;
   url: string;
+}
+
+interface IndexedMeme extends RawMeme {
   description?: string;
 }
 
-interface MemesFile {
+interface RawMemesFile {
   lastUpdated: string;
   source: string;
   count: number;
-  memes: Meme[];
+  memes: RawMeme[];
 }
 
-function loadMemes(): MemesFile {
+interface IndexedMemesFile {
+  lastUpdated: string;
+  count: number;
+  memes: IndexedMeme[];
+}
+
+function loadRawMemes(): RawMemesFile {
   const raw = readFileSync(INPUT_PATH, "utf-8");
   return JSON.parse(raw);
 }
 
-function saveMemes(data: MemesFile): void {
+function loadIndexedMemes(): IndexedMemesFile | null {
+  try {
+    const raw = readFileSync(OUTPUT_PATH, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveIndexedMemes(data: IndexedMemesFile): void {
   data.lastUpdated = new Date().toISOString();
-  writeFileSync(INPUT_PATH, JSON.stringify(data, null, 2), "utf-8");
+  data.count = data.memes.length;
+  mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
+  writeFileSync(OUTPUT_PATH, JSON.stringify(data, null, 2), "utf-8");
 }
 
 function sleep(ms: number): Promise<void> {
@@ -73,12 +95,18 @@ async function main() {
     baseURL: "https://api.groq.com/openai/v1",
   });
 
-  const data = loadMemes();
-  const total = data.memes.length;
-  const toEnrich = data.memes.filter((m) => !m.description);
+  const rawData = loadRawMemes();
+  const existing = loadIndexedMemes();
+  // Оставляем только мемы с описанием — остальные переобогатим
+  const indexed: IndexedMemesFile = existing
+    ? { ...existing, memes: existing.memes.filter((m) => m.description) }
+    : { lastUpdated: "", count: 0, memes: [] };
+
+  const indexedIds = new Set(indexed.memes.map((m) => m.id));
+  const toEnrich = rawData.memes.filter((m) => !indexedIds.has(m.id));
 
   console.log(
-    `Загружено ${total} мемов, нужно обогатить: ${toEnrich.length}`,
+    `Всего мемов: ${rawData.memes.length}, в индексе: ${indexed.memes.length}, нужно обогатить: ${toEnrich.length}`,
   );
 
   if (toEnrich.length === 0) {
@@ -87,20 +115,21 @@ async function main() {
   }
 
   let enrichedCount = 0;
+  const total = toEnrich.length;
 
-  for (const meme of toEnrich) {
-    const index = data.memes.indexOf(meme) + 1;
+  for (let i = 0; i < total; i++) {
+    const meme = toEnrich[i];
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const description = await enrichMeme(client, meme.name);
 
         if (description) {
-          meme.description = description;
+          indexed.memes.push({ ...meme, description });
           enrichedCount++;
-          console.log(`[${index}/${total}] Enriched: "${meme.name}"`);
+          console.log(`[${i + 1}/${total}] Enriched: "${meme.name}"`);
         } else {
-          console.warn(`[${index}/${total}] Пустой ответ для: "${meme.name}"`);
+          console.warn(`[${i + 1}/${total}] Пустой ответ для: "${meme.name}"`);
         }
         break;
       } catch (error: unknown) {
@@ -118,12 +147,12 @@ async function main() {
                 ) || 60
               : 60;
           console.warn(
-            `[${index}/${total}] Rate limit (попытка ${attempt + 1}/${MAX_RETRIES}), ожидание ${retryAfter} сек...`,
+            `[${i + 1}/${total}] Rate limit (попытка ${attempt + 1}/${MAX_RETRIES}), ожидание ${retryAfter} сек...`,
           );
           await sleep(retryAfter * 1000);
         } else {
           console.error(
-            `[${index}/${total}] Ошибка для "${meme.name}":`,
+            `[${i + 1}/${total}] Ошибка для "${meme.name}":`,
             error,
           );
           break;
@@ -133,7 +162,7 @@ async function main() {
 
     // Сохраняем прогресс каждые N мемов
     if (enrichedCount > 0 && enrichedCount % SAVE_EVERY === 0) {
-      saveMemes(data);
+      saveIndexedMemes(indexed);
       console.log(`Прогресс сохранён (${enrichedCount} обогащено)`);
     }
 
@@ -141,7 +170,7 @@ async function main() {
   }
 
   // Финальное сохранение
-  saveMemes(data);
+  saveIndexedMemes(indexed);
   console.log(`Готово! Обогащено ${enrichedCount} мемов из ${toEnrich.length}`);
 }
 
