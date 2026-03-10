@@ -1,11 +1,10 @@
-import "dotenv/config";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { dirname } from "path";
 import OpenAI from "openai";
+import { config } from "../src/config.ts";
+import { sleep } from "../src/utils.ts";
+import type { RawMemesFile, IndexedMemesFile } from "../src/types.ts";
 
-const INPUT_PATH = "data/memes.json";
-const OUTPUT_PATH = "data/memes-indexed.json";
-const GROQ_MODEL = "llama-3.3-70b-versatile";
 const DELAY_MS = 2000; // Пауза между запросами (30 req/min у Groq)
 const SAVE_EVERY = 10; // Сохранять прогресс каждые N мемов
 const MAX_RETRIES = 3;
@@ -18,37 +17,14 @@ Format: "{meme_name} — description"
 
 Write nothing else. Only one line.`;
 
-interface RawMeme {
-  id: string;
-  name: string;
-  url: string;
-}
-
-interface IndexedMeme extends RawMeme {
-  description?: string;
-}
-
-interface RawMemesFile {
-  lastUpdated: string;
-  source: string;
-  count: number;
-  memes: RawMeme[];
-}
-
-interface IndexedMemesFile {
-  lastUpdated: string;
-  count: number;
-  memes: IndexedMeme[];
-}
-
 function loadRawMemes(): RawMemesFile {
-  const raw = readFileSync(INPUT_PATH, "utf-8");
+  const raw = readFileSync(config.data.rawMemesPath, "utf-8");
   return JSON.parse(raw);
 }
 
 function loadIndexedMemes(): IndexedMemesFile | null {
   try {
-    const raw = readFileSync(OUTPUT_PATH, "utf-8");
+    const raw = readFileSync(config.data.indexedMemesPath, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -58,12 +34,12 @@ function loadIndexedMemes(): IndexedMemesFile | null {
 function saveIndexedMemes(data: IndexedMemesFile): void {
   data.lastUpdated = new Date().toISOString();
   data.count = data.memes.length;
-  mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
-  writeFileSync(OUTPUT_PATH, JSON.stringify(data, null, 2), "utf-8");
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  mkdirSync(dirname(config.data.indexedMemesPath), { recursive: true });
+  writeFileSync(
+    config.data.indexedMemesPath,
+    JSON.stringify(data, null, 2),
+    "utf-8",
+  );
 }
 
 async function enrichMeme(
@@ -71,7 +47,7 @@ async function enrichMeme(
   memeName: string,
 ): Promise<string | null> {
   const response = await client.chat.completions.create({
-    model: GROQ_MODEL,
+    model: config.groq.model,
     temperature: 0.3,
     max_tokens: 200,
     messages: [
@@ -84,15 +60,9 @@ async function enrichMeme(
 }
 
 async function main() {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    console.error("Ошибка: переменная окружения GROQ_API_KEY не задана");
-    process.exit(1);
-  }
-
   const client = new OpenAI({
-    apiKey,
-    baseURL: "https://api.groq.com/openai/v1",
+    apiKey: config.groq.apiKey,
+    baseURL: config.groq.baseUrl,
   });
 
   const rawData = loadRawMemes();
@@ -133,19 +103,9 @@ async function main() {
         }
         break;
       } catch (error: unknown) {
-        if (
-          error instanceof Error &&
-          "status" in error &&
-          (error as { status: number }).status === 429
-        ) {
+        if (error instanceof OpenAI.APIError && error.status === 429) {
           const retryAfter =
-            "headers" in error
-              ? Number(
-                  (error as { headers: Record<string, string> }).headers[
-                    "retry-after"
-                  ],
-                ) || 60
-              : 60;
+            Number(error.headers?.["retry-after"]) || 60;
           console.warn(
             `[${i + 1}/${total}] Rate limit (попытка ${attempt + 1}/${MAX_RETRIES}), ожидание ${retryAfter} сек...`,
           );

@@ -1,12 +1,8 @@
 import { config } from "../config.ts";
-import type { EnrichedMeme } from "./meme.ts";
+import { sleep } from "../utils.ts";
+import type { EnrichedMeme } from "../types.ts";
 
 const MAX_RETRIES = 3;
-const COLD_START_DELAY_MS = 20_000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export async function embedText(text: string): Promise<number[]> {
   const url = `${config.hf.apiUrl}/${config.hf.model}/pipeline/feature-extraction`;
@@ -23,8 +19,13 @@ export async function embedText(text: string): Promise<number[]> {
 
     if (response.ok) {
       const data: number[] = await response.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        throw new Error("HF API вернул некорректный формат");
+      if (
+        !Array.isArray(data) ||
+        data.length !== config.hf.embeddingDimensions
+      ) {
+        throw new Error(
+          `Неожиданный формат ответа: длина ${Array.isArray(data) ? data.length : "не массив"}`,
+        );
       }
       return data;
     }
@@ -33,7 +34,7 @@ export async function embedText(text: string): Promise<number[]> {
       console.warn(
         `HF модель загружается (попытка ${attempt + 1}/${MAX_RETRIES})...`,
       );
-      await sleep(COLD_START_DELAY_MS);
+      await sleep(config.hf.coldStartDelayMs);
       continue;
     }
 

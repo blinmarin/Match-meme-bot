@@ -1,10 +1,10 @@
 import OpenAI from "openai";
 import { config } from "../config.ts";
-import type { EnrichedMeme } from "./meme.ts";
+import type { EnrichedMeme } from "../types.ts";
 
 const client = new OpenAI({
   apiKey: config.groq.apiKey,
-  baseURL: "https://api.groq.com/openai/v1",
+  baseURL: config.groq.baseUrl,
 });
 
 const SYSTEM_PROMPT_TEMPLATE = `You are an internet meme expert with a great sense of humor.
