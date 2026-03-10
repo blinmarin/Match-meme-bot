@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { config } from "../config.ts";
+import type { EnrichedMeme } from "./meme.ts";
 
 const client = new OpenAI({
   apiKey: config.groq.apiKey,
@@ -8,21 +9,33 @@ const client = new OpenAI({
 
 const SYSTEM_PROMPT_TEMPLATE = `You are an internet meme expert with a great sense of humor.
 
-The user will describe a situation in any language. Your task:
+The user will describe a situation in any language. You are given 5 candidate memes with descriptions.
+Your task:
 1. Understand the emotion and context of the situation
-2. Pick the meme from the list that fits best
-3. Reply with ONLY the meme number (a single number)
+2. Consider the cultural context and "meme logic" — which meme is actually used in such situations
+3. Pick the best fitting meme
+4. Reply with ONLY the meme number (a single number from 1 to 5)
 
 Do not write anything except the number. Just the number.
 
-Meme list:
-{MEME_LIST}`;
+Candidate memes:
+{CANDIDATES_LIST}`;
+
+function formatCandidates(candidates: EnrichedMeme[]): string {
+  return candidates
+    .map((m, i) => `${i + 1}. ${m.name} — ${m.description}`)
+    .join("\n");
+}
 
 export async function selectMeme(
   situation: string,
-  memeList: string,
+  candidates: EnrichedMeme[],
 ): Promise<number | null> {
-  const systemPrompt = SYSTEM_PROMPT_TEMPLATE.replace("{MEME_LIST}", memeList);
+  const candidatesList = formatCandidates(candidates);
+  const systemPrompt = SYSTEM_PROMPT_TEMPLATE.replace(
+    "{CANDIDATES_LIST}",
+    candidatesList,
+  );
 
   const response = await client.chat.completions.create({
     model: config.groq.model,
@@ -32,7 +45,7 @@ export async function selectMeme(
       { role: "system", content: systemPrompt },
       {
         role: "user",
-        content: `Situation: ${situation}\n\nWhich meme fits best?`,
+        content: `Situation: ${situation}\n\nWhich meme fits best? Reply with only the number.`,
       },
     ],
   });
@@ -52,7 +65,7 @@ export async function selectMeme(
   }
 
   const number = parseInt(match[0], 10);
-  if (number < 1) {
+  if (number < 1 || number > candidates.length) {
     return null;
   }
 

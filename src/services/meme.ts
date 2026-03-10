@@ -1,53 +1,51 @@
-import { config } from '../config.ts';
+import { readFileSync } from "fs";
 
-export interface Meme {
+const MEMES_PATH = "data/memes-indexed.json";
+
+export interface EnrichedMeme {
   id: string;
   name: string;
   url: string;
+  description: string;
+  embedding: number[];
 }
 
-interface ImgflipResponse {
-  success: boolean;
-  data: {
-    memes: Array<{
-      id: string;
-      name: string;
-      url: string;
-    }>;
-  };
+interface IndexedMemesFile {
+  lastUpdated: string;
+  model: string;
+  dimensions: number;
+  count: number;
+  memes: EnrichedMeme[];
 }
 
-let memesArray: Meme[] = [];
-let memesPromptString = '';
+let memesArray: EnrichedMeme[] = [];
 
-export async function loadMemes(): Promise<void> {
-  const response = await fetch(config.imgflip.apiUrl);
-  const json: ImgflipResponse = await response.json();
+export function loadMemes(): void {
+  let data: IndexedMemesFile;
 
-  if (!json.success) {
-    throw new Error('Imgflip API вернул ошибку');
+  try {
+    const raw = readFileSync(MEMES_PATH, "utf-8");
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `Файл ${MEMES_PATH} не найден. Запусти: npm run fetch-memes && npm run enrich && npm run embed`,
+    );
   }
 
-  memesArray = json.data.memes.map((meme) => ({
-    id: meme.id,
-    name: meme.name,
-    url: meme.url,
-  }));
+  const valid = data.memes.filter(
+    (m) => m.description && m.embedding?.length > 0,
+  );
 
-  memesPromptString = memesArray
-    .map((meme, i) => `${i + 1}. ${meme.name}`)
-    .join('\n');
-
-  console.log(`Загружено ${memesArray.length} мемов`);
-}
-
-export function getMemeByNumber(number: number): Meme | null {
-  if (number < 1 || number > memesArray.length) {
-    return null;
+  if (valid.length === 0) {
+    throw new Error(
+      `В ${MEMES_PATH} нет мемов с эмбеддингами. Запусти: npm run enrich && npm run embed`,
+    );
   }
-  return memesArray[number - 1];
+
+  memesArray = valid;
+  console.log(`Загружено ${memesArray.length} мемов с эмбеддингами`);
 }
 
-export function getMemesForPrompt(): string {
-  return memesPromptString;
+export function getAllMemes(): EnrichedMeme[] {
+  return memesArray;
 }
