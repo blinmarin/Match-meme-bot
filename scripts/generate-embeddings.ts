@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "fs";
 
 const INPUT_PATH = "data/memes-indexed.json";
 const HF_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2";
-const HF_API_URL = `https://api-inference.huggingface.co/pipeline/feature-extraction/${HF_MODEL}`;
+const HF_API_URL = `https://router.huggingface.co/hf-inference/models/${HF_MODEL}/pipeline/feature-extraction`;
 const EMBEDDING_DIMENSIONS = 384;
 const DELAY_MS = 200;
 const SAVE_EVERY = 10;

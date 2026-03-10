@@ -9,7 +9,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function embedText(text: string): Promise<number[]> {
-  const url = `${config.hf.apiUrl}/${config.hf.model}`;
+  const url = `${config.hf.apiUrl}/${config.hf.model}/pipeline/feature-extraction`;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const response = await fetch(url, {
