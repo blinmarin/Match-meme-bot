@@ -35,6 +35,7 @@ export const config = {
   },
   imgflip: {
     apiUrl: "https://api.imgflip.com/get_memes",
+    templatesUrl: "https://imgflip.com/memetemplates",
   },
   search: {
     topN: 5,

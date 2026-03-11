@@ -8,6 +8,7 @@
     "start": "tsx src/index.ts",
     "dev": "tsx --watch src/index.ts",
     "fetch-memes": "tsx scripts/fetch-memes.ts",
+    "parse-memes": "tsx scripts/parse-imgflip-memes.ts",
     "enrich": "tsx scripts/enrich-memes.ts",
     "embed": "tsx scripts/generate-embeddings.ts"
   },
@@ -15,6 +16,7 @@
   "dependencies": {
     "dotenv": "^17.3.1",
     "grammy": "^1.41.1",
+    "node-html-parser": "^7.1.0",
     "openai": "^6.25.0"
   },
   "devDependencies": {
