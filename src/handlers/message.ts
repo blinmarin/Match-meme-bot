@@ -1,24 +1,32 @@
-import { Context } from "grammy";
+import { Context, InlineKeyboard } from "grammy";
 import { selectMeme } from "../services/ai.ts";
-import { getAllMemes } from "../services/meme.ts";
+import { getAllMemes, getAllGifs } from "../services/meme.ts";
 import { embedText, findTopCandidates } from "../services/embedding.ts";
 import { config } from "../config.ts";
 
 const ERRORS = {
   EMBEDDING_ERROR: "Сервис поиска временно недоступен, попробуй позже",
-  NO_MEME: "Не могу подобрать мем, попробуй описать ситуацию иначе",
+  NO_RESULT: "Не могу подобрать результат, попробуй описать ситуацию иначе",
+  NO_PENDING: "Сначала опиши ситуацию",
   GENERAL: "Что-то пошло не так, попробуй ещё раз",
 };
 
+const pendingSituations = new Map<number, { text: string; embedding: number[] }>();
+
+const keyboard = new InlineKeyboard()
+  .text("Мем", "pick:meme")
+  .text("GIF", "pick:gif");
+
 export async function handleMessage(ctx: Context): Promise<void> {
   const text = ctx.message?.text;
-
   if (!text || text.startsWith("/") || text.length > config.maxMessageLength) {
     return;
   }
 
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
   try {
-    // 1. Эмбеддинг запроса пользователя
     let queryEmbedding: number[];
     try {
       queryEmbedding = await embedText(text);
@@ -28,33 +36,62 @@ export async function handleMessage(ctx: Context): Promise<void> {
       return;
     }
 
-    // 2. Поиск top-N кандидатов по косинусному сходству
+    pendingSituations.set(chatId, { text, embedding: queryEmbedding });
+
+    await ctx.reply("Что подобрать?", { reply_markup: keyboard });
+  } catch (error) {
+    console.error("Ошибка обработки сообщения:", error);
+    await ctx.reply(ERRORS.GENERAL);
+  }
+}
+
+export async function handleCallback(ctx: Context): Promise<void> {
+  const chatId = ctx.chat?.id;
+  const data = ctx.callbackQuery?.data;
+
+  if (!chatId || !data) return;
+
+  const pending = pendingSituations.get(chatId);
+  if (!pending) {
+    await ctx.answerCallbackQuery({ text: ERRORS.NO_PENDING });
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
+  pendingSituations.delete(chatId);
+
+  const isGif = data === "pick:gif";
+  const collection = isGif ? getAllGifs() : getAllMemes();
+
+  try {
     const candidates = findTopCandidates(
-      queryEmbedding,
-      getAllMemes(),
+      pending.embedding,
+      collection,
       config.search.topN,
     );
 
     if (candidates.length === 0) {
-      await ctx.reply(ERRORS.NO_MEME);
+      await ctx.reply(ERRORS.NO_RESULT);
       return;
     }
 
-    // 3. AI выбирает лучший мем из кандидатов
-    let meme = candidates[0]; // Фоллбэк: top-1 по сходству
+    let result = candidates[0];
     try {
-      const selectedNumber = await selectMeme(text, candidates);
+      const selectedNumber = await selectMeme(pending.text, candidates);
       if (selectedNumber) {
-        meme = candidates[selectedNumber - 1];
+        result = candidates[selectedNumber - 1];
       }
     } catch (error) {
       console.error("Ошибка AI, используем top-1 по сходству:", error);
     }
 
-    // 4. Отправка мема
-    await ctx.replyWithPhoto(meme.url);
+    if (isGif) {
+      await ctx.replyWithAnimation(result.url);
+    } else {
+      await ctx.replyWithPhoto(result.url);
+    }
   } catch (error) {
-    console.error("Ошибка обработки сообщения:", error);
+    console.error("Ошибка выбора контента:", error);
     await ctx.reply(ERRORS.GENERAL);
   }
 }
