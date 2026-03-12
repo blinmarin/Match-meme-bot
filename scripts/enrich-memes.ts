@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { dirname } from "path";
 import OpenAI from "openai";
 import { config } from "../src/config.ts";
-import { sleep } from "../src/utils.ts";
+import { sleep, getContentType, getDataPaths } from "../src/utils.ts";
 import type { RawMemesFile, IndexedMemesFile } from "../src/types.ts";
 
 const DELAY_MS = 2000; // Пауза между запросами (30 req/min у Groq)
@@ -17,29 +17,25 @@ Format: "{meme_name} — description"
 
 Write nothing else. Only one line.`;
 
-function loadRawMemes(): RawMemesFile {
-  const raw = readFileSync(config.data.rawMemesPath, "utf-8");
+function loadRawMemes(path: string): RawMemesFile {
+  const raw = readFileSync(path, "utf-8");
   return JSON.parse(raw);
 }
 
-function loadIndexedMemes(): IndexedMemesFile | null {
+function loadIndexedMemes(path: string): IndexedMemesFile | null {
   try {
-    const raw = readFileSync(config.data.indexedMemesPath, "utf-8");
+    const raw = readFileSync(path, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
   }
 }
 
-function saveIndexedMemes(data: IndexedMemesFile): void {
+function saveIndexedMemes(data: IndexedMemesFile, path: string): void {
   data.lastUpdated = new Date().toISOString();
   data.count = data.memes.length;
-  mkdirSync(dirname(config.data.indexedMemesPath), { recursive: true });
-  writeFileSync(
-    config.data.indexedMemesPath,
-    JSON.stringify(data, null, 2),
-    "utf-8",
-  );
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
 }
 
 async function enrichMeme(
@@ -60,13 +56,17 @@ async function enrichMeme(
 }
 
 async function main() {
+  const contentType = getContentType();
+  const paths = getDataPaths(contentType);
+  console.log(`Обогащение ${contentType === "gif" ? "GIF" : "мемов"}...`);
+
   const client = new OpenAI({
     apiKey: config.groq.apiKey,
     baseURL: config.groq.baseUrl,
   });
 
-  const rawData = loadRawMemes();
-  const existing = loadIndexedMemes();
+  const rawData = loadRawMemes(paths.raw);
+  const existing = loadIndexedMemes(paths.indexed);
   // Оставляем только мемы с описанием — остальные переобогатим
   const indexed: IndexedMemesFile = existing
     ? { ...existing, memes: existing.memes.filter((m) => m.description) }
@@ -122,7 +122,7 @@ async function main() {
 
     // Сохраняем прогресс каждые N мемов
     if (enrichedCount > 0 && enrichedCount % SAVE_EVERY === 0) {
-      saveIndexedMemes(indexed);
+      saveIndexedMemes(indexed, paths.indexed);
       console.log(`Прогресс сохранён (${enrichedCount} обогащено)`);
     }
 
@@ -130,7 +130,7 @@ async function main() {
   }
 
   // Финальное сохранение
-  saveIndexedMemes(indexed);
+  saveIndexedMemes(indexed, paths.indexed);
   console.log(`Готово! Обогащено ${enrichedCount} мемов из ${toEnrich.length}`);
 }
 
