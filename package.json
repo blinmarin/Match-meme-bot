@@ -10,7 +10,10 @@
     "fetch-memes": "tsx scripts/fetch-memes.ts",
     "parse-memes": "tsx scripts/parse-imgflip-memes.ts",
     "enrich": "tsx scripts/enrich-memes.ts",
-    "embed": "tsx scripts/generate-embeddings.ts"
+    "embed": "tsx scripts/generate-embeddings.ts",
+    "parse-gifs": "tsx scripts/parse-imgflip-memes.ts --type gif",
+    "enrich-gifs": "tsx scripts/enrich-memes.ts --type gif",
+    "embed-gifs": "tsx scripts/generate-embeddings.ts --type gif"
   },
   "license": "MIT",
   "dependencies": {
