@@ -3,17 +3,16 @@ import { config } from "../config.ts";
 import type { EnrichedMeme, IndexedMemesFile } from "../types.ts";
 
 let memesArray: EnrichedMeme[] = [];
+let gifsArray: EnrichedMeme[] = [];
 
-export function loadMemes(): void {
+function loadCollection(path: string, label: string): EnrichedMeme[] {
   let data: IndexedMemesFile;
 
   try {
-    const raw = readFileSync(config.data.indexedMemesPath, "utf-8");
+    const raw = readFileSync(path, "utf-8");
     data = JSON.parse(raw);
   } catch {
-    throw new Error(
-      `Файл ${config.data.indexedMemesPath} не найден. Запусти: npm run fetch-memes && npm run enrich && npm run embed`,
-    );
+    throw new Error(`Файл ${path} не найден`);
   }
 
   const valid = data.memes.filter(
@@ -22,15 +21,25 @@ export function loadMemes(): void {
   );
 
   if (valid.length === 0) {
-    throw new Error(
-      `В ${config.data.indexedMemesPath} нет мемов с эмбеддингами. Запусти: npm run enrich && npm run embed`,
-    );
+    throw new Error(`В ${path} нет записей с эмбеддингами`);
   }
 
-  memesArray = valid;
-  console.log(`Загружено ${memesArray.length} мемов с эмбеддингами`);
+  console.log(`Загружено ${valid.length} ${label} с эмбеддингами`);
+  return valid;
+}
+
+export function loadMemes(): void {
+  memesArray = loadCollection(config.data.indexedMemesPath, "мемов");
+}
+
+export function loadGifs(): void {
+  gifsArray = loadCollection(config.data.indexedGifsPath, "GIF");
 }
 
 export function getAllMemes(): EnrichedMeme[] {
   return memesArray;
+}
+
+export function getAllGifs(): EnrichedMeme[] {
+  return gifsArray;
 }
