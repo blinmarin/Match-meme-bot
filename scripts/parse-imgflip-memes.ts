@@ -2,13 +2,42 @@ import { writeFileSync, mkdirSync } from "fs";
 import { dirname } from "path";
 import { parse } from "node-html-parser";
 import { config } from "../src/config.ts";
-import { sleep } from "../src/utils.ts";
+import { sleep, getContentType, getDataPaths } from "../src/utils.ts";
 import type { BaseMeme, RawMemesFile } from "../src/types.ts";
 
 const DELAY_MS = 1000; // Пауза между запросами к Imgflip
 
+// Конфигурация парсинга для разных типов контента
+const PARSE_CONFIG = {
+  meme: {
+    sourceUrl: config.imgflip.templatesUrl,
+    extractId: (href: string) => href.replace("/meme/", ""),
+    transformUrl: (src: string) => (src.startsWith("//") ? `https:${src}` : src),
+    source: "imgflip-scrape",
+    label: "мемов",
+  },
+  gif: {
+    sourceUrl: config.imgflip.gifTemplatesUrl,
+    extractId: (href: string) => {
+      const match = href.match(/\/memetemplate\/(\d+)\//);
+      return match ? match[1] : "";
+    },
+    transformUrl: (src: string) => {
+      // //i.imgflip.com/2/ae1bos.jpg → https://i.imgflip.com/ae1bos.mp4
+      const url = src.startsWith("//") ? `https:${src}` : src;
+      return url.replace(/\/\d+\//, "/").replace(/\.jpg$/, ".mp4");
+    },
+    source: "imgflip-gif-scrape",
+    label: "GIF",
+  },
+};
+
+const contentType = getContentType();
+const parseConfig = PARSE_CONFIG[contentType];
+const paths = getDataPaths(contentType);
+
 async function fetchPage(page: number): Promise<BaseMeme[]> {
-  const url = page === 1 ? config.imgflip.templatesUrl : `${config.imgflip.templatesUrl}?page=${page}`;
+  const url = page === 1 ? parseConfig.sourceUrl : `${parseConfig.sourceUrl}?page=${page}`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -30,10 +59,8 @@ async function fetchPage(page: number): Promise<BaseMeme[]> {
       const href = link.getAttribute("href") ?? "";
       const src = img.getAttribute("src") ?? "";
 
-      // ID из href: /meme/Drake-Hotline-Bling → Drake-Hotline-Bling
-      const id = href.replace("/meme/", "");
-      // URL картинки: //i.imgflip.com/4/30b1gx.jpg → https://i.imgflip.com/4/30b1gx.jpg
-      const imageUrl = src.startsWith("//") ? `https:${src}` : src;
+      const id = parseConfig.extractId(href);
+      const imageUrl = parseConfig.transformUrl(src);
 
       if (!id || !name || !imageUrl) return null;
 
@@ -43,7 +70,7 @@ async function fetchPage(page: number): Promise<BaseMeme[]> {
 }
 
 async function main() {
-  console.log("Парсинг мемов из Imgflip...");
+  console.log(`Парсинг ${parseConfig.label} из Imgflip...`);
 
   const allMemes: BaseMeme[] = [];
   let page = 1;
@@ -57,7 +84,7 @@ async function main() {
 
     allMemes.push(...memes);
     console.log(
-      `[Страница ${page}] Найдено ${memes.length} мемов (всего: ${allMemes.length})`,
+      `[Страница ${page}] Найдено ${memes.length} ${parseConfig.label} (всего: ${allMemes.length})`,
     );
 
     page++;
@@ -66,19 +93,19 @@ async function main() {
 
   const result: RawMemesFile = {
     lastUpdated: new Date().toISOString(),
-    source: "imgflip-scrape",
+    source: parseConfig.source,
     count: allMemes.length,
     memes: allMemes,
   };
 
-  const outputPath = config.data.rawMemesPath;
+  const outputPath = paths.raw;
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, JSON.stringify(result, null, 2), "utf-8");
 
-  console.log(`Готово! Сохранено ${allMemes.length} мемов в ${outputPath}`);
+  console.log(`Готово! Сохранено ${allMemes.length} ${parseConfig.label} в ${outputPath}`);
 }
 
 main().catch((error) => {
-  console.error("Ошибка парсинга мемов:", error);
+  console.error(`Ошибка парсинга ${parseConfig.label}:`, error);
   process.exit(1);
 });
