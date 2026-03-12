@@ -1,10 +1,11 @@
 import { bot } from './bot.ts';
-import { loadMemes } from './services/meme.ts';
+import { loadMemes, loadGifs } from './services/meme.ts';
 
 async function main() {
   console.log('Starting Meme Match Bot...');
 
   loadMemes();
+  loadGifs();
 
   process.once('SIGINT', () => bot.stop());
   process.once('SIGTERM', () => bot.stop());
