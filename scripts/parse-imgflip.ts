@@ -19,6 +19,7 @@ const PARSE_CONFIG = {
   },
   gif: {
     sourceUrl: config.imgflip.gifTemplatesUrl,
+    // href вида /memetemplate/628238188/John-Hamm-dancing → извлекаем числовой ID
     extractId: (href: string) => {
       const match = href.match(/\/memetemplate\/(\d+)\//);
       return match ? match[1] : "";
