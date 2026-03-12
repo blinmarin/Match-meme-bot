@@ -67,7 +67,7 @@ async function main() {
 
   const rawData = loadRawMemes(paths.raw);
   const existing = loadIndexedMemes(paths.indexed);
-  // Оставляем только мемы с описанием — остальные переобогатим
+  // Оставляем только записи с описанием — остальные переобогатим
   const indexed: IndexedMemesFile = existing
     ? { ...existing, memes: existing.memes.filter((m) => m.description) }
     : { lastUpdated: "", count: 0, memes: [] };
@@ -120,7 +120,7 @@ async function main() {
       }
     }
 
-    // Сохраняем прогресс каждые N мемов
+    // Сохраняем прогресс каждые N записей
     if (enrichedCount > 0 && enrichedCount % SAVE_EVERY === 0) {
       saveIndexedMemes(indexed, paths.indexed);
       console.log(`Прогресс сохранён (${enrichedCount} обогащено)`);
@@ -129,7 +129,7 @@ async function main() {
     await sleep(DELAY_MS);
   }
 
-  // Финальное сохранение
+  // Финальное сохранение результатов
   saveIndexedMemes(indexed, paths.indexed);
   console.log(`Готово! Обогащено ${enrichedCount} мемов из ${toEnrich.length}`);
 }

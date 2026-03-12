@@ -27,6 +27,7 @@ export async function handleMessage(ctx: Context): Promise<void> {
   if (!chatId) return;
 
   try {
+    // 1. Эмбеддинг запроса пользователя
     let queryEmbedding: number[];
     try {
       queryEmbedding = await embedText(text);
@@ -36,6 +37,7 @@ export async function handleMessage(ctx: Context): Promise<void> {
       return;
     }
 
+    // 2. Сохраняем ситуацию и предлагаем выбрать формат (мем или GIF)
     pendingSituations.set(chatId, { text, embedding: queryEmbedding });
 
     await ctx.reply("Что подобрать?", { reply_markup: keyboard });
@@ -64,6 +66,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
   const collection = isGif ? getAllGifs() : getAllMemes();
 
   try {
+    // 3. Поиск top-N кандидатов по косинусному сходству в выбранной базе (мемы или GIF)
     const candidates = findTopCandidates(
       pending.embedding,
       collection,
@@ -75,6 +78,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
       return;
     }
 
+    // 4. AI выбирает лучший вариант из кандидатов (фоллбэк: top-1 по сходству)
     let result = candidates[0];
     try {
       const selectedNumber = await selectMeme(pending.text, candidates);
@@ -85,6 +89,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
       console.error("Ошибка AI, используем top-1 по сходству:", error);
     }
 
+    // 5. Отправка результата: фото для мемов, анимация для GIF
     if (isGif) {
       await ctx.replyWithAnimation(result.url);
     } else {

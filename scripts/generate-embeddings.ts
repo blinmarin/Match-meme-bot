@@ -27,7 +27,7 @@ async function main() {
   const data = loadIndexedMemes(paths.indexed);
   const total = data.memes.length;
 
-  // Проверяем что все мемы обогащены
+  // Проверяем что все записи обогащены описаниями
   const withoutDescription = data.memes.filter((m) => !m.description);
   if (withoutDescription.length > 0) {
     console.error(
@@ -49,7 +49,7 @@ async function main() {
     const meme = data.memes[i];
     const index = i + 1;
 
-    // Пропускаем если эмбеддинг уже есть
+    // Пропускаем если эмбеддинг уже сгенерирован
     if (meme.embedding?.length === config.hf.embeddingDimensions) {
       continue;
     }

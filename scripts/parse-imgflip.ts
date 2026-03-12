@@ -12,8 +12,9 @@ const PARSE_CONFIG = {
   meme: {
     sourceUrl: config.imgflip.templatesUrl,
     extractId: (href: string) => href.replace("/meme/", ""),
-    transformUrl: (src: string) => (src.startsWith("//") ? `https:${src}` : src),
-    source: "imgflip-scrape",
+    transformUrl: (src: string) =>
+      src.startsWith("//") ? `https:${src}` : src,
+    source: "imgflip-meme-parse",
     label: "мемов",
   },
   gif: {
@@ -27,7 +28,7 @@ const PARSE_CONFIG = {
       const url = src.startsWith("//") ? `https:${src}` : src;
       return url.replace(/\/\d+\//, "/").replace(/\.jpg$/, ".mp4");
     },
-    source: "imgflip-gif-scrape",
+    source: "imgflip-gif-parse",
     label: "GIF",
   },
 };
@@ -37,7 +38,10 @@ const parseConfig = PARSE_CONFIG[contentType];
 const paths = getDataPaths(contentType);
 
 async function fetchPage(page: number): Promise<BaseMeme[]> {
-  const url = page === 1 ? parseConfig.sourceUrl : `${parseConfig.sourceUrl}?page=${page}`;
+  const url =
+    page === 1
+      ? parseConfig.sourceUrl
+      : `${parseConfig.sourceUrl}?page=${page}`;
   const response = await fetch(url);
 
   if (!response.ok) {
@@ -102,7 +106,9 @@ async function main() {
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, JSON.stringify(result, null, 2), "utf-8");
 
-  console.log(`Готово! Сохранено ${allMemes.length} ${parseConfig.label} в ${outputPath}`);
+  console.log(
+    `Готово! Сохранено ${allMemes.length} ${parseConfig.label} в ${outputPath}`,
+  );
 }
 
 main().catch((error) => {
