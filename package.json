@@ -7,8 +7,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx --watch src/index.ts",
-    "fetch-memes": "tsx scripts/fetch-memes.ts",
-    "parse-templates": "tsx scripts/parse-imgflip.ts",
+"parse-templates": "tsx scripts/parse-imgflip.ts",
     "enrich-templates": "tsx scripts/enrich-memes.ts",
     "embed-templates": "tsx scripts/generate-embeddings.ts",
     "parse-gifs": "tsx scripts/parse-imgflip.ts --type gif",

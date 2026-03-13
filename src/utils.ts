@@ -1,5 +1,3 @@
-import { config } from "./config.ts";
-
 /** Тип контента: шаблоны мемов или гифки */
 export type ContentType = "template" | "gif";
 
@@ -14,11 +12,4 @@ export function getContentType(): ContentType {
     return "gif";
   }
   return "template";
-}
-
-/** Возвращает пути к файлам данных в зависимости от типа контента */
-export function getDataPaths(type: ContentType): { raw: string; indexed: string } {
-  return type === "gif"
-    ? { raw: config.data.rawGifsPath, indexed: config.data.indexedGifsPath }
-    : { raw: config.data.rawMemesPath, indexed: config.data.indexedMemesPath };
 }

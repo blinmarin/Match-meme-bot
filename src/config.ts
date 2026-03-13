@@ -39,18 +39,11 @@ export const config = {
     },
   },
   imgflip: {
-    apiUrl: "https://api.imgflip.com/get_memes",
     templatesUrl: "https://imgflip.com/memetemplates",
     gifTemplatesUrl: "https://imgflip.com/gif-templates",
   },
   search: {
     topN: 5,
-  },
-  data: {
-    rawMemesPath: "data/memes.json",
-    indexedMemesPath: "data/memes-indexed.json",
-    rawGifsPath: "data/gifs.json",
-    indexedGifsPath: "data/gifs-indexed.json",
   },
   maxMessageLength: 1000,
 };
