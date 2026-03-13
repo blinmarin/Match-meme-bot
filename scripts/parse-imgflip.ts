@@ -9,7 +9,7 @@ const DELAY_MS = 1000; // Пауза между запросами к Imgflip
 
 // Конфигурация парсинга для разных типов контента
 const PARSE_CONFIG = {
-  meme: {
+  template: {
     sourceUrl: config.imgflip.templatesUrl,
     extractId: (href: string) => href.replace("/meme/", ""),
     transformUrl: (src: string) =>
