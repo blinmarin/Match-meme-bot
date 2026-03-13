@@ -1,6 +1,5 @@
 import { config } from "../config.ts";
 import { sleep } from "../utils.ts";
-import type { EnrichedMeme } from "../types.ts";
 
 const MAX_RETRIES = 3;
 
@@ -50,33 +49,4 @@ export async function embedText(text: string): Promise<number[]> {
   }
 
   throw new Error(`HF API недоступен после ${MAX_RETRIES} попыток`);
-}
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) return 0;
-  return dot / denominator;
-}
-
-export function findTopCandidates(
-  queryEmbedding: number[],
-  memes: EnrichedMeme[],
-  n: number,
-): EnrichedMeme[] {
-  return memes
-    .map((meme) => ({
-      meme,
-      score: cosineSimilarity(queryEmbedding, meme.embedding),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, n)
-    .map((item) => item.meme);
 }

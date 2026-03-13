@@ -1,7 +1,7 @@
-import { Context, InlineKeyboard } from "grammy";
+import { Context, InlineKeyboard, InputFile } from "grammy";
 import { selectMeme } from "../services/ai.ts";
-import { getAllMemes, getAllGifs } from "../services/meme.ts";
-import { embedText, findTopCandidates } from "../services/embedding.ts";
+import { searchMedia } from "../services/db.ts";
+import { embedText } from "../services/embedding.ts";
 import { config } from "../config.ts";
 
 const ERRORS = {
@@ -11,7 +11,10 @@ const ERRORS = {
   GENERAL: "Что-то пошло не так, попробуй ещё раз",
 };
 
-const pendingSituations = new Map<number, { text: string; embedding: number[] }>();
+const pendingSituations = new Map<
+  number,
+  { text: string; embedding: number[] }
+>();
 
 const keyboard = new InlineKeyboard()
   .text("Мем", "pick:meme")
@@ -63,13 +66,13 @@ export async function handleCallback(ctx: Context): Promise<void> {
   pendingSituations.delete(chatId);
 
   const isGif = data === "pick:gif";
-  const collection = isGif ? getAllGifs() : getAllMemes();
+  const mediaType = isGif ? "gif" : "template";
 
   try {
-    // 3. Поиск top-N кандидатов по косинусному сходству в выбранной базе (мемы или GIF)
-    const candidates = findTopCandidates(
+    // 3. Поиск top-N кандидатов через pgvector cosine distance
+    const candidates = await searchMedia(
+      mediaType,
       pending.embedding,
-      collection,
       config.search.topN,
     );
 
@@ -91,9 +94,13 @@ export async function handleCallback(ctx: Context): Promise<void> {
 
     // 5. Отправка результата: фото для мемов, анимация для GIF
     if (isGif) {
-      await ctx.replyWithAnimation(result.url);
+      await ctx.replyWithAnimation(
+        new InputFile(result.image_data, "animation.mp4"),
+      );
     } else {
-      await ctx.replyWithPhoto(result.url);
+      await ctx.replyWithPhoto(
+        new InputFile(result.image_data, "meme.jpg"),
+      );
     }
   } catch (error) {
     console.error("Ошибка выбора контента:", error);
