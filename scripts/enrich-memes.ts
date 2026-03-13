@@ -1,12 +1,13 @@
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { dirname } from "path";
 import OpenAI from "openai";
 import { config } from "../src/config.ts";
-import { sleep, getContentType, getDataPaths } from "../src/utils.ts";
-import type { RawMemesFile, IndexedMemesFile } from "../src/types.ts";
+import { sleep, getContentType } from "../src/utils.ts";
+import {
+  getMediaWithoutDescription,
+  updateDescription,
+  closePool,
+} from "../src/services/db.ts";
 
 const DELAY_MS = 2000; // Пауза между запросами (30 req/min у Groq)
-const SAVE_EVERY = 10; // Сохранять прогресс каждые N мемов
 const MAX_RETRIES = 3;
 
 const SYSTEM_PROMPT = `You are an internet meme expert. For the given meme name, write a concise one-line description in English.
@@ -16,27 +17,6 @@ Include: what is depicted, what emotions it conveys, typical situations where it
 Format: "{meme_name} — description"
 
 Write nothing else. Only one line.`;
-
-function loadRawMemes(path: string): RawMemesFile {
-  const raw = readFileSync(path, "utf-8");
-  return JSON.parse(raw);
-}
-
-function loadIndexedMemes(path: string): IndexedMemesFile | null {
-  try {
-    const raw = readFileSync(path, "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function saveIndexedMemes(data: IndexedMemesFile, path: string): void {
-  data.lastUpdated = new Date().toISOString();
-  data.count = data.memes.length;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
-}
 
 async function enrichMeme(
   client: OpenAI,
@@ -57,49 +37,40 @@ async function enrichMeme(
 
 async function main() {
   const contentType = getContentType();
-  const paths = getDataPaths(contentType);
-  console.log(`Обогащение ${contentType === "gif" ? "GIF" : "мемов"}...`);
+  const label = contentType === "gif" ? "GIF" : "шаблонов";
+  console.log(`Обогащение ${label}...`);
 
   const client = new OpenAI({
     apiKey: config.groq.apiKey,
     baseURL: config.groq.baseUrl,
   });
 
-  const rawData = loadRawMemes(paths.raw);
-  const existing = loadIndexedMemes(paths.indexed);
-  // Оставляем только записи с описанием — остальные переобогатим
-  const indexed: IndexedMemesFile = existing
-    ? { ...existing, memes: existing.memes.filter((m) => m.description) }
-    : { lastUpdated: "", count: 0, memes: [] };
+  const toEnrich = await getMediaWithoutDescription(contentType);
+  const total = toEnrich.length;
 
-  const indexedIds = new Set(indexed.memes.map((m) => m.id));
-  const toEnrich = rawData.memes.filter((m) => !indexedIds.has(m.id));
+  console.log(`Нужно обогатить: ${total}`);
 
-  console.log(
-    `Всего мемов: ${rawData.memes.length}, в индексе: ${indexed.memes.length}, нужно обогатить: ${toEnrich.length}`,
-  );
-
-  if (toEnrich.length === 0) {
-    console.log("Все мемы уже обогащены!");
+  if (total === 0) {
+    console.log("Все записи уже обогащены!");
+    await closePool();
     return;
   }
 
   let enrichedCount = 0;
-  const total = toEnrich.length;
 
   for (let i = 0; i < total; i++) {
-    const meme = toEnrich[i];
+    const item = toEnrich[i];
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const description = await enrichMeme(client, meme.name);
+        const description = await enrichMeme(client, item.name);
 
         if (description) {
-          indexed.memes.push({ ...meme, description });
+          await updateDescription(item.id, description);
           enrichedCount++;
-          console.log(`[${i + 1}/${total}] Enriched: "${meme.name}"`);
+          console.log(`[${i + 1}/${total}] Enriched: "${item.name}"`);
         } else {
-          console.warn(`[${i + 1}/${total}] Пустой ответ для: "${meme.name}"`);
+          console.warn(`[${i + 1}/${total}] Пустой ответ для: "${item.name}"`);
         }
         break;
       } catch (error: unknown) {
@@ -112,7 +83,7 @@ async function main() {
           await sleep(retryAfter * 1000);
         } else {
           console.error(
-            `[${i + 1}/${total}] Ошибка для "${meme.name}":`,
+            `[${i + 1}/${total}] Ошибка для "${item.name}":`,
             error,
           );
           break;
@@ -120,21 +91,14 @@ async function main() {
       }
     }
 
-    // Сохраняем прогресс каждые N записей
-    if (enrichedCount > 0 && enrichedCount % SAVE_EVERY === 0) {
-      saveIndexedMemes(indexed, paths.indexed);
-      console.log(`Прогресс сохранён (${enrichedCount} обогащено)`);
-    }
-
     await sleep(DELAY_MS);
   }
 
-  // Финальное сохранение результатов
-  saveIndexedMemes(indexed, paths.indexed);
-  console.log(`Готово! Обогащено ${enrichedCount} мемов из ${toEnrich.length}`);
+  await closePool();
+  console.log(`Готово! Обогащено ${enrichedCount} из ${total}`);
 }
 
 main().catch((error) => {
-  console.error("Ошибка обогащения мемов:", error);
+  console.error("Ошибка обогащения:", error);
   process.exit(1);
 });
