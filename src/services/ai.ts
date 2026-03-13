@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { config } from "../config.ts";
-import type { EnrichedMeme } from "../types.ts";
+import type { MediaCandidate } from "../types.ts";
 
 const client = new OpenAI({
   apiKey: config.groq.apiKey,
@@ -21,7 +21,7 @@ Do not write anything except the number. Just the number.
 Candidate memes:
 {CANDIDATES_LIST}`;
 
-function formatCandidates(candidates: EnrichedMeme[]): string {
+function formatCandidates(candidates: MediaCandidate[]): string {
   return candidates
     .map((m, i) => `${i + 1}. ${m.name} — ${m.description}`)
     .join("\n");
@@ -29,7 +29,7 @@ function formatCandidates(candidates: EnrichedMeme[]): string {
 
 export async function selectMeme(
   situation: string,
-  candidates: EnrichedMeme[],
+  candidates: MediaCandidate[],
 ): Promise<number | null> {
   const candidatesList = formatCandidates(candidates);
   const systemPrompt = SYSTEM_PROMPT_TEMPLATE.replace(
