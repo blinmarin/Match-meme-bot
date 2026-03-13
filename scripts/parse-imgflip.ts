@@ -1,11 +1,10 @@
-import { writeFileSync, mkdirSync } from "fs";
-import { dirname } from "path";
 import { parse } from "node-html-parser";
 import { config } from "../src/config.ts";
-import { sleep, getContentType, getDataPaths } from "../src/utils.ts";
-import type { BaseMeme, RawMemesFile } from "../src/types.ts";
+import { sleep, getContentType } from "../src/utils.ts";
+import { insertMedia, closePool } from "../src/services/db.ts";
 
-const DELAY_MS = 1000; // Пауза между запросами к Imgflip
+const DELAY_MS = 1000; // Пауза между запросами страниц к Imgflip
+const DOWNLOAD_DELAY_MS = 100; // Пауза между скачиванием файлов
 
 // Конфигурация парсинга для разных типов контента
 const PARSE_CONFIG = {
@@ -14,8 +13,7 @@ const PARSE_CONFIG = {
     extractId: (href: string) => href.replace("/meme/", ""),
     transformUrl: (src: string) =>
       src.startsWith("//") ? `https:${src}` : src,
-    source: "imgflip-meme-parse",
-    label: "мемов",
+    label: "шаблонов",
   },
   gif: {
     sourceUrl: config.imgflip.gifTemplatesUrl,
@@ -29,16 +27,20 @@ const PARSE_CONFIG = {
       const url = src.startsWith("//") ? `https:${src}` : src;
       return url.replace(/\/\d+\//, "/").replace(/\.jpg$/, ".mp4");
     },
-    source: "imgflip-gif-parse",
     label: "GIF",
   },
 };
 
+interface ParsedItem {
+  id: string;
+  name: string;
+  url: string;
+}
+
 const contentType = getContentType();
 const parseConfig = PARSE_CONFIG[contentType];
-const paths = getDataPaths(contentType);
 
-async function fetchPage(page: number): Promise<BaseMeme[]> {
+async function fetchPage(page: number): Promise<ParsedItem[]> {
   const url =
     page === 1
       ? parseConfig.sourceUrl
@@ -71,44 +73,53 @@ async function fetchPage(page: number): Promise<BaseMeme[]> {
 
       return { id, name, url: imageUrl };
     })
-    .filter((meme): meme is BaseMeme => meme !== null);
+    .filter((item): item is ParsedItem => item !== null);
+}
+
+/** Скачивает файл по URL и возвращает Buffer */
+async function downloadFile(url: string): Promise<Buffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Ошибка скачивания ${url}: ${response.status}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
 }
 
 async function main() {
   console.log(`Парсинг ${parseConfig.label} из Imgflip...`);
 
-  const allMemes: BaseMeme[] = [];
+  let totalParsed = 0;
+  let totalInserted = 0;
   let page = 1;
 
   while (true) {
-    const memes = await fetchPage(page);
+    const items = await fetchPage(page);
 
-    if (memes.length === 0) {
-      break;
+    if (items.length === 0) break;
+
+    for (const item of items) {
+      try {
+        const imageData = await downloadFile(item.url);
+        const inserted = await insertMedia(item.id, contentType, item.name, imageData);
+        if (inserted) totalInserted++;
+        totalParsed++;
+        await sleep(DOWNLOAD_DELAY_MS);
+      } catch (error) {
+        console.error(`Ошибка для "${item.name}":`, error);
+      }
     }
 
-    allMemes.push(...memes);
     console.log(
-      `[Страница ${page}] Найдено ${memes.length} ${parseConfig.label} (всего: ${allMemes.length})`,
+      `[Страница ${page}] ${items.length} ${parseConfig.label} (всего: ${totalParsed}, новых: ${totalInserted})`,
     );
 
     page++;
     await sleep(DELAY_MS);
   }
 
-  const result: RawMemesFile = {
-    lastUpdated: new Date().toISOString(),
-    source: parseConfig.source,
-    count: allMemes.length,
-    memes: allMemes,
-  };
-
-  const outputPath = paths.raw;
-  mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, JSON.stringify(result, null, 2), "utf-8");
-
+  await closePool();
   console.log(
-    `Готово! Сохранено ${allMemes.length} ${parseConfig.label} в ${outputPath}`,
+    `Готово! Обработано ${totalParsed} ${parseConfig.label}, добавлено ${totalInserted} новых`,
   );
 }
 
