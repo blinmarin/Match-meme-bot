@@ -33,6 +33,11 @@ export const config = {
     embeddingDimensions: 384,
     coldStartDelayMs: 20_000,
   },
+  db: {
+    get connectionString(): string {
+      return required("DATABASE_URL");
+    },
+  },
   imgflip: {
     apiUrl: "https://api.imgflip.com/get_memes",
     templatesUrl: "https://imgflip.com/memetemplates",
