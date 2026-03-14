@@ -5,6 +5,9 @@ import { insertMedia, closePool } from "../src/services/db.ts";
 
 const DELAY_MS = 1000; // Пауза между запросами страниц к Imgflip
 const DOWNLOAD_DELAY_MS = 100; // Пауза между скачиванием файлов
+const MAX_RETRIES = 3; // Количество попыток при ошибке сети
+const RETRY_DELAY_MS = 5000; // Пауза перед повторной попыткой
+const MAX_CONSECUTIVE_FAILURES = 3; // Сколько страниц подряд могут упасть до остановки
 
 // Конфигурация парсинга для разных типов контента
 const PARSE_CONFIG = {
@@ -40,40 +43,56 @@ interface ParsedItem {
 const contentType = getContentType();
 const parseConfig = PARSE_CONFIG[contentType];
 
+/** Загружает страницу с retry при таймаутах */
 async function fetchPage(page: number): Promise<ParsedItem[]> {
   const url =
     page === 1
       ? parseConfig.sourceUrl
       : `${parseConfig.sourceUrl}?page=${page}`;
-  const response = await fetch(url);
 
-  if (!response.ok) {
-    throw new Error(`Imgflip вернул ${response.status} для страницы ${page}`);
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Imgflip вернул ${response.status} для страницы ${page}`);
+      }
+
+      const html = await response.text();
+      const root = parse(html);
+      const boxes = root.querySelectorAll(".mt-box");
+
+      return boxes
+        .map((box) => {
+          const link = box.querySelector(".mt-title a");
+          const img = box.querySelector(".mt-img-wrap img");
+
+          if (!link || !img) return null;
+
+          const name = link.text.trim();
+          const href = link.getAttribute("href") ?? "";
+          const src = img.getAttribute("src") ?? "";
+
+          const id = parseConfig.extractId(href);
+          const imageUrl = parseConfig.transformUrl(src);
+
+          if (!id || !name || !imageUrl) return null;
+
+          return { id, name, url: imageUrl };
+        })
+        .filter((item): item is ParsedItem => item !== null);
+    } catch (error) {
+      console.warn(
+        `[Страница ${page}] Попытка ${attempt + 1}/${MAX_RETRIES} не удалась:`,
+        error instanceof Error ? error.message : error,
+      );
+      if (attempt < MAX_RETRIES - 1) {
+        await sleep(RETRY_DELAY_MS);
+      }
+    }
   }
 
-  const html = await response.text();
-  const root = parse(html);
-  const boxes = root.querySelectorAll(".mt-box");
-
-  return boxes
-    .map((box) => {
-      const link = box.querySelector(".mt-title a");
-      const img = box.querySelector(".mt-img-wrap img");
-
-      if (!link || !img) return null;
-
-      const name = link.text.trim();
-      const href = link.getAttribute("href") ?? "";
-      const src = img.getAttribute("src") ?? "";
-
-      const id = parseConfig.extractId(href);
-      const imageUrl = parseConfig.transformUrl(src);
-
-      if (!id || !name || !imageUrl) return null;
-
-      return { id, name, url: imageUrl };
-    })
-    .filter((item): item is ParsedItem => item !== null);
+  throw new Error(`Не удалось загрузить страницу ${page} после ${MAX_RETRIES} попыток`);
 }
 
 /** Скачивает файл по URL и возвращает Buffer */
@@ -91,11 +110,27 @@ async function main() {
   let totalParsed = 0;
   let totalInserted = 0;
   let page = 1;
+  let consecutiveFailures = 0;
 
   while (true) {
-    const items = await fetchPage(page);
+    let items: ParsedItem[];
+    try {
+      items = await fetchPage(page);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+      consecutiveFailures++;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        console.error(`${MAX_CONSECUTIVE_FAILURES} страниц подряд не удалось загрузить, останавливаемся`);
+        break;
+      }
+      page++;
+      await sleep(RETRY_DELAY_MS);
+      continue;
+    }
 
     if (items.length === 0) break;
+
+    consecutiveFailures = 0;
 
     for (const item of items) {
       try {
