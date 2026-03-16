@@ -43,7 +43,7 @@ export const config = {
     gifTemplatesUrl: "https://imgflip.com/gif-templates",
   },
   search: {
-    topN: 5,
+    topN: 10,
   },
   maxMessageLength: 1000,
 };

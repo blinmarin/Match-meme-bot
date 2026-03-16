@@ -1,5 +1,5 @@
 import { Context, InlineKeyboard, InputFile } from "grammy";
-import { selectMeme } from "../services/ai.ts";
+import { selectMeme, extractSearchQuery } from "../services/ai.ts";
 import { searchMedia } from "../services/db.ts";
 import { embedText } from "../services/embedding.ts";
 import { config } from "../config.ts";
@@ -30,17 +30,27 @@ export async function handleMessage(ctx: Context): Promise<void> {
   if (!chatId) return;
 
   try {
-    // 1. Эмбеддинг запроса пользователя
+    // 1. Groq извлекает эмоции и контекст из ситуации для более точного поиска
+    let searchQuery: string;
+    try {
+      searchQuery = await extractSearchQuery(text);
+      console.log(`Поисковый запрос: "${searchQuery}" для ситуации: "${text.slice(0, 50)}"`);
+    } catch (error) {
+      console.error("Ошибка извлечения эмоций, используем исходный текст:", error);
+      searchQuery = text;
+    }
+
+    // 2. Эмбеддинг обогащённого запроса (эмоции вместо сырого текста)
     let queryEmbedding: number[];
     try {
-      queryEmbedding = await embedText(text);
+      queryEmbedding = await embedText(searchQuery);
     } catch (error) {
       console.error("Ошибка эмбеддинга:", error);
       await ctx.reply(ERRORS.EMBEDDING_ERROR);
       return;
     }
 
-    // 2. Сохраняем ситуацию и предлагаем выбрать формат (мем или GIF)
+    // 3. Сохраняем ситуацию и предлагаем выбрать формат (мем или GIF)
     pendingSituations.set(chatId, { text, embedding: queryEmbedding });
 
     await ctx.reply("Что подобрать?", { reply_markup: keyboard });
@@ -69,7 +79,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
   const mediaType = isGif ? "gif" : "template";
 
   try {
-    // 3. Поиск top-N кандидатов через pgvector cosine distance
+    // 4. Поиск top-N кандидатов через pgvector cosine distance
     const candidates = await searchMedia(
       mediaType,
       pending.embedding,
@@ -81,7 +91,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
       return;
     }
 
-    // 4. AI выбирает лучший вариант из кандидатов (фоллбэк: top-1 по сходству)
+    // 5. AI выбирает лучший вариант из кандидатов (фоллбэк: top-1 по сходству)
     let result = candidates[0];
     try {
       const selectedNumber = await selectMeme(pending.text, candidates);
@@ -92,7 +102,7 @@ export async function handleCallback(ctx: Context): Promise<void> {
       console.error("Ошибка AI, используем top-1 по сходству:", error);
     }
 
-    // 5. Отправка результата: фото для мемов, анимация для GIF
+    // 6. Отправка результата: фото для мемов, анимация для GIF
     if (isGif) {
       await ctx.replyWithAnimation(
         new InputFile(result.image_data, "animation.mp4"),
